@@ -45,7 +45,7 @@ module clustering_module
   implicit none
   private
 
-  public :: pivot, bisect_kmedoids, cluster_kmeans, select_uniform, cluster_fuzzy_cmeans, cur_decomposition
+  public :: pivot, bisect_kmedoids, cluster_kmeans, select_uniform, cluster_fuzzy_cmeans, cur_decomposition, cur_scores
 
   integer, parameter  :: n_trial = 10
   integer, parameter  :: n_trial_k_med = 100
@@ -840,6 +840,63 @@ module clustering_module
      if (.not. all(index_out /= 0)) call system_abort('select_uniform: could not assign all sparse points')
 
   endsubroutine select_uniform
+
+  subroutine cur_scores(this, scores, rank, n_iter)
+   ! based on 10.1073/pnas.0803205106
+
+   real(dp), intent(in), dimension(:,:) :: this
+   real(dp), dimension(:), intent(out) :: scores
+   integer, intent(in), optional :: rank, n_iter
+
+   integer :: n
+   integer :: expected_columns
+   integer :: my_n_iter, my_rank
+   type(LA_Matrix) :: LA_this
+   real(dp), allocatable, dimension(:) :: p, s, p_minus_ran_uniform
+   real(dp), allocatable, dimension(:,:) :: v
+   integer :: j, l
+   integer, allocatable, dimension(:), target :: p_index
+   integer, pointer, dimension(:) :: tmp_index_out => null()
+   real(dp), allocatable, dimension(:,:) :: C, Cp
+   real(dp) :: err, min_err
+   integer :: error
+
+   expected_columns = size(scores)
+
+   if( expected_columns <= 0 ) then
+      call print_warning("cur_decomposition: called with expected_columns "//expected_columns//", can't be zero or less")
+      return
+   endif
+
+   call initialise(LA_this,this)
+
+   my_n_iter = optional_default(1, n_iter)
+
+   if (present(rank)) then
+      call LA_Matrix_SVD_Allocate(LA_this,v=v,error=error)
+      HANDLE_ERROR(error)
+      call LA_Matrix_SVD(LA_this,v=v,error=error)
+      HANDLE_ERROR(error)
+      my_rank = rank
+   else
+      call LA_Matrix_SVD_Allocate(LA_this,s=s,v=v,error=error)
+      HANDLE_ERROR(error)
+      call LA_Matrix_SVD(LA_this,s=s,v=v,error=error)
+      HANDLE_ERROR(error)
+      my_rank = count(s > TOL_SVD) / 2
+   endif
+
+   n = size(v,1)
+   allocate(p(n), p_minus_ran_uniform(n), p_index(n))
+   allocate( C(size(this,1),expected_columns), Cp(expected_columns,size(this,1)) )
+
+   p = sum(v(:,1:my_rank)**2, dim=2)
+   p = p * expected_columns
+   p = p / my_rank
+   p = min(p,1.0_dp)
+
+   scores = p
+  end subroutine cur_scores
 
   subroutine cur_decomposition(this, index_out, rank, n_iter)
     ! based on 10.1073/pnas.0803205106
