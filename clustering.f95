@@ -841,12 +841,13 @@ module clustering_module
 
   endsubroutine select_uniform
 
-  subroutine cur_scores(this, scores, rank, n_iter)
+  subroutine cur_scores(this, scores, rank, n_iter, clip_scores)
    ! based on 10.1073/pnas.0803205106
 
    real(dp), intent(in), dimension(:,:) :: this
    real(dp), dimension(:), intent(out) :: scores
    integer, intent(in), optional :: rank, n_iter
+   logical, intent(in), optional :: clip_scores
 
    integer :: n
    integer :: expected_columns
@@ -861,6 +862,8 @@ module clustering_module
    real(dp) :: err, min_err
    integer :: error
 
+   logical :: do_clip
+
    expected_columns = size(scores)
 
    if( expected_columns <= 0 ) then
@@ -871,6 +874,8 @@ module clustering_module
    call initialise(LA_this,this)
 
    my_n_iter = optional_default(1, n_iter)
+
+   do_clip = optional_default(.TRUE., clip_scores)
 
    if (present(rank)) then
       call LA_Matrix_SVD_Allocate(LA_this,v=v,error=error)
@@ -893,7 +898,10 @@ module clustering_module
    p = sum(v(:,1:my_rank)**2, dim=2)
    p = p * expected_columns
    p = p / my_rank
-   p = min(p,1.0_dp)
+
+   if (do_clip) then
+      p = min(p,1.0_dp)
+   endif
 
    scores = p
   end subroutine cur_scores
